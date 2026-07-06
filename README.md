@@ -28,7 +28,24 @@ The query shares no keywords with the saved text. That is the point: Memora stor
 | `memory_forget(key)` | Delete a memory |
 | `memory_list(limit)` | List stored memories |
 
-## Install
+## Quick start
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/trwilcoxson/memora-mcp/main/install.sh | sh
+```
+
+One command: clones a pinned Memora checkout, builds a venv under `~/.memora-mcp/` (torch + chromadb, a few GB), picks a backend (`OPENAI_API_KEY` if exported, otherwise local Ollama — pulling a small chat model and an embedding model if needed), registers the server at Claude Code user scope, and runs `memora-mcp doctor` to verify the whole chain. Idempotent — re-run any time; re-runs take seconds.
+
+Then open a new `claude` or `omni claude` session and say "save to memory: …". In a later session, "search memory for …" finds it by meaning.
+
+Flags: `--backend ollama|openai`, `--no-register`, `--pin <memora-ref>`. Health check any time:
+
+```sh
+~/.memora-mcp/venv/bin/memora-mcp doctor
+```
+
+<details>
+<summary>Manual install</summary>
 
 Memora publishes no package, so you need a checkout of it plus this repo:
 
@@ -40,7 +57,8 @@ uv pip install -r requirements.txt        # heavy: torch, transformers, chromadb
 uv pip install memora-mcp                  # or: uv pip install -e /path/to/memora-mcp
 ```
 
-The server needs `import memora` to resolve. Either add `Memora/src` to the interpreter path (a `.pth` file in `site-packages`) or set `MEMORA_SRC=/path/to/Memora/src`.
+The server needs `import memora` to resolve. Either add `Memora/src` to the interpreter path (a `.pth` file in `site-packages`), or set `MEMORA_SRC=/path/to/Memora/src`, or place the checkout at `~/.memora-mcp/Memora` (searched automatically).
+</details>
 
 ## Backend
 
@@ -101,15 +119,7 @@ Run it with `omni run examples/omnigent-bundle`. Put the backend settings in the
 
 **Under Omnigent (native Claude harness)**
 
-Omnigent launches native Claude Code sessions with its own `--mcp-config` for the bridge server, without `--strict-mcp-config` — so user-scope MCP servers load too. Register once and every `omni claude` session has memory:
-
-```sh
-claude mcp add --scope user memora \
-  -e OPENAI_API_TYPE=openai -e OPENAI_API_KEY=ollama \
-  -e OPENAI_BASE_URL=http://localhost:11434/v1 \
-  -e MEMORA_LLM_MODEL=gpt-4-local -e MEMORA_EMBEDDING_MODEL=nomic-embed-text \
-  -- /path/to/venv/bin/memora-mcp
-```
+Nothing extra: Omnigent launches native Claude Code sessions with its own `--mcp-config` for the bridge server, without `--strict-mcp-config` — so the user-scope registration `install.sh` creates loads in every `omni claude` session too.
 
 Add `mcp__memora__*` to `permissions.allow` in `~/.claude/settings.json` if you don't run with permissions bypassed — Omnigent routes native permission prompts to its web UI, which stalls unattended sessions.
 

@@ -11,27 +11,29 @@ def memora_home() -> Path:
 def ensure_memora_importable() -> None:
     """Make the Memora library importable.
 
-    Memora ships no package metadata, so it can't be a pip dependency. Either
-    install it onto the interpreter path yourself (e.g. a .pth file) or point
-    MEMORA_SRC at the `src/` directory of a Memora checkout.
+    Memora ships no package metadata, so it can't be a pip dependency.
+    Resolution order: already importable (e.g. a .pth file), then
+    MEMORA_SRC, then the checkout install.sh manages under MEMORA_MCP_HOME.
     """
-    try:
-        import memora  # noqa: F401
-        return
-    except ImportError:
-        pass
-    src = os.environ.get("MEMORA_SRC")
-    if src and Path(src).is_dir():
-        sys.path.insert(0, str(Path(src).expanduser().resolve()))
+    candidates = [os.environ.get("MEMORA_SRC"), str(memora_home() / "Memora" / "src")]
+    for src in candidates:
         try:
             import memora  # noqa: F401
             return
         except ImportError:
             pass
+        if src and Path(src).is_dir():
+            sys.path.insert(0, str(Path(src).expanduser().resolve()))
+    try:
+        import memora  # noqa: F401
+        return
+    except ImportError:
+        pass
     raise RuntimeError(
-        "memora is not importable. Clone https://github.com/microsoft/Memora, "
-        "install its requirements.txt into this environment, and set "
-        "MEMORA_SRC=/path/to/Memora/src"
+        "memora is not importable. Run install.sh from "
+        "https://github.com/trwilcoxson/memora-mcp, or clone "
+        "https://github.com/microsoft/Memora, install its requirements.txt "
+        "into this environment, and set MEMORA_SRC=/path/to/Memora/src"
     )
 
 
