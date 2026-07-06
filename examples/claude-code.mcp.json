@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "memora": {
+      "command": "memora-mcp",
+      "args": []
+    }
+  }
+}
