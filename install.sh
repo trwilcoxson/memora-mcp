@@ -107,6 +107,11 @@ elif [ "$REGISTER" -eq 1 ]; then
   printf '%s\n' "  $VENV/bin/memora-mcp enable   # turn on automatic memory"
 fi
 
+if command -v omni >/dev/null 2>&1; then
+  say "detected Omnigent — memory works in your 'omni claude' sessions automatically"
+  say "(user-scope registration reaches every Omnigent-managed native session)"
+fi
+
 say "running doctor"
 "$VENV/bin/memora-mcp" doctor || true
 

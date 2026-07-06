@@ -1,8 +1,10 @@
 # memora-mcp
 
-An [MCP](https://modelcontextprotocol.io) server that gives coding agents persistent, semantic, cross-session memory, backed by [Microsoft Memora](https://github.com/microsoft/Memora).
+An [MCP](https://modelcontextprotocol.io) server that gives a *meta-harness* one persistent, semantic memory shared across every agent it runs — backed by [Microsoft Memora](https://github.com/microsoft/Memora) and wired into [Omnigent](https://github.com/omnigent-ai/omnigent).
 
-Save a fact in one session, in one agent; recall it by meaning in any later session, in any other agent. Works with Claude Code, Codex, Cursor, [Omnigent](https://github.com/omnigent-ai/omnigent) agent bundles, and any other MCP client.
+Establish a fact while working through one agent; recall it by meaning in any later session, in any other agent. Automatic capture, automatic recall, running on the model plane you already have.
+
+> **New here?** Read **[docs/OVERVIEW.md](docs/OVERVIEW.md)** — what Omnigent and Memora each are, why Memora's memory architecture is measurably better (with Microsoft's benchmarks), and why we bring them together this way. This README is the install-and-use reference.
 
 ```
 session A (Codex):
