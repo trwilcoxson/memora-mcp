@@ -5,7 +5,7 @@ import sys
 
 _CLI_CMDS = {
     "list", "show", "why", "forget", "stats", "export",
-    "config", "distill", "doctor", "enable", "disable",
+    "config", "distill", "doctor", "enable", "disable", "import-claude",
 }
 
 

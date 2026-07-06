@@ -119,6 +119,19 @@ def cmd_config(args):
     print("\nset any of these as an environment variable (or via the MCP `env` block).")
 
 
+def cmd_import_claude(args):
+    from memora_mcp.claude_import import run
+
+    summary, preview = run(dry_run=args.dry_run, limit=args.limit)
+    if preview:
+        print("sample of what will be imported:" if args.dry_run else "imported (sample):")
+        print("\n".join(preview))
+        print()
+    print(json.dumps(summary, indent=2))
+    if args.dry_run:
+        print("\n(dry run — nothing written. re-run without --dry-run to import.)")
+
+
 def cmd_distill(args):
     from memora_mcp.distiller import run_once
 
@@ -170,6 +183,11 @@ def main(argv=None):
     ep = sub.add_parser("export", help="export memories as jsonl")
     ep.add_argument("--out")
     ep.set_defaults(fn=cmd_export)
+
+    ic = sub.add_parser("import-claude", help="import Claude Code's native memory files into Memora")
+    ic.add_argument("--dry-run", action="store_true", help="preview without writing")
+    ic.add_argument("--limit", type=int, help="cap number of files (for testing)")
+    ic.set_defaults(fn=cmd_import_claude)
 
     sub.add_parser("config", help="show the active memory-engine configuration").set_defaults(fn=cmd_config)
     sub.add_parser("distill", help="run the distiller now (drains the spool)").set_defaults(fn=cmd_distill)
