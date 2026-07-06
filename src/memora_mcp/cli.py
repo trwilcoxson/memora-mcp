@@ -106,6 +106,19 @@ def cmd_export(args):
     sc.close()
 
 
+def cmd_config(args):
+    from memora_mcp import planes
+    from memora_mcp.settings import as_table
+
+    plane = planes.detect()
+    print(f"active model plane: {plane['kind']}\n")
+    w = max(len(k) for k, _, _ in as_table())
+    for key, val, note in as_table():
+        print(f"  {key:<{w}}  {val}")
+        print(f"  {'':<{w}}  \033[2m{note}\033[0m")
+    print("\nset any of these as an environment variable (or via the MCP `env` block).")
+
+
 def cmd_distill(args):
     from memora_mcp.distiller import run_once
 
@@ -158,6 +171,7 @@ def main(argv=None):
     ep.add_argument("--out")
     ep.set_defaults(fn=cmd_export)
 
+    sub.add_parser("config", help="show the active memory-engine configuration").set_defaults(fn=cmd_config)
     sub.add_parser("distill", help="run the distiller now (drains the spool)").set_defaults(fn=cmd_distill)
     sub.add_parser("doctor", help="health check").set_defaults(fn=cmd_doctor)
     sub.add_parser("enable", help="register automemory hooks in ~/.claude/settings.json").set_defaults(fn=cmd_enable)

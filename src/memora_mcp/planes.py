@@ -41,9 +41,19 @@ def _extract_json(text):
     return json.loads(m.group(0))
 
 
-def complete_json(plane, prompt, timeout=600):
-    """One model turn on the deployment's plane; returns the parsed JSON object."""
+def complete_json(plane, prompt, timeout=None):
+    """One model turn on the deployment's plane; returns the parsed JSON object.
+
+    Runs an economical model at low reasoning by default (settings.model_for /
+    MEMORA_REASONING) — extraction is easy work and should not spend frontier
+    budget. Every knob is overridable per settings.py.
+    """
+    from memora_mcp.settings import model_for, settings
+
+    s = settings()
+    timeout = timeout or s.distill_timeout
     kind = plane["kind"]
+    model = plane.get("model") or model_for(kind)
     # Force the harness into pure-function mode: no tools, no preamble, JSON
     # only. Without this the CLI treats the prompt as a task to help with.
     sys_prompt = (
@@ -53,21 +63,24 @@ def complete_json(plane, prompt, timeout=600):
         'output {"ops": []}.'
     )
     if kind == "subscription-claude":
-        r = subprocess.run(
-            ["claude", "-p", prompt, "--output-format", "json",
-             "--append-system-prompt", sys_prompt,
-             "--disallowedTools", "*", "--max-turns", "1"],
-            capture_output=True, text=True, timeout=timeout,
-        )
+        argv = ["claude", "-p", prompt, "--output-format", "json",
+                "--append-system-prompt", sys_prompt,
+                "--disallowedTools", "*", "--max-turns", "1"]
+        if model:
+            argv += ["--model", model]              # cheap model, e.g. haiku
+        if s.reasoning in ("low", "medium", "high"):
+            argv += ["--effort", s.reasoning]        # low reasoning by default
+        r = subprocess.run(argv, capture_output=True, text=True, timeout=timeout)
         if r.returncode != 0:
             raise RuntimeError(f"claude plane failed: {r.stderr[:300]}")
         payload = json.loads(r.stdout)
         return _extract_json(payload.get("result", ""))
     if kind == "subscription-codex":
-        r = subprocess.run(
-            ["codex", "exec", "--json", prompt],
-            capture_output=True, text=True, timeout=timeout,
-        )
+        argv = ["codex", "exec", "--json"]
+        if model:
+            argv += ["-m", model]
+        argv.append(prompt)
+        r = subprocess.run(argv, capture_output=True, text=True, timeout=timeout)
         if r.returncode != 0:
             raise RuntimeError(f"codex plane failed: {r.stderr[:300]}")
         text = ""
@@ -86,8 +99,9 @@ def complete_json(plane, prompt, timeout=600):
             base_url=plane.get("base_url") or os.environ.get("OPENAI_BASE_URL"),
         )
         r = client.chat.completions.create(
-            model=plane.get("model") or os.environ.get("MEMORA_LLM_MODEL", "gpt-4.1-mini"),
-            messages=[{"role": "user", "content": prompt}],
+            model=model or "gpt-4.1-mini",
+            messages=[{"role": "system", "content": sys_prompt},
+                      {"role": "user", "content": prompt}],
         )
         return _extract_json(r.choices[0].message.content)
     raise RuntimeError(

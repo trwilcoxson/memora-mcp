@@ -62,36 +62,36 @@ uv pip install memora-mcp                  # or: uv pip install -e /path/to/memo
 The server needs `import memora` to resolve. Either add `Memora/src` to the interpreter path (a `.pth` file in `site-packages`), or set `MEMORA_SRC=/path/to/Memora/src`, or place the checkout at `~/.memora-mcp/Memora` (searched automatically).
 </details>
 
-## Backend
+## Configuration
 
-Memora uses the OpenAI SDK for both the extraction LLM and embeddings. Any OpenAI-compatible endpoint works via `OPENAI_BASE_URL` — OpenAI itself, Azure, LiteLLM, vLLM, a Databricks AI Gateway, or local Ollama.
+Memory is **free to run by default**: extraction uses a cheap model on the plane you already have (your `claude`/`codex` subscription — no API key), and retrieval uses an in-process embedder (no key, no service). Everything is an environment variable; run `memora-mcp config` to see the resolved values.
 
-| Variable | Default | Notes |
+| Variable | Default | What it does |
 |---|---|---|
-| `OPENAI_API_TYPE` | `openai` | `azure` switches to Azure managed-identity auth |
-| `OPENAI_API_KEY` | — | Required; any non-empty value for keyless local gateways |
-| `OPENAI_BASE_URL` | OpenAI | Point at your gateway |
-| `MEMORA_LLM_MODEL` | `gpt-4.1-mini` | Extraction/cue model. Must contain `gpt-3/4/5`, `o1`, or `o3` — Memora treats any other name as a local HuggingFace model and tries to download it |
-| `MEMORA_EMBEDDING_MODEL` | `text-embedding-3-small` | Any embedding model your endpoint serves |
-| `MEMORA_MCP_HOME` | `~/.memora-mcp` | Store location |
-| `MEMORA_MCP_USER` | `$USER` | Selects the (per-user) collection |
-| `MEMORA_MCP_COLLECTION` | `memora` | Collection name prefix |
-| `MEMORA_SRC` | — | Path to `Memora/src` if not on the interpreter path |
-| `MEMORA_EPISODIC` | `0` | `1` also stores episodic summaries |
-| `MEMORA_HYBRID` | `0` | `1` adds BM25 keyword fusion to search |
+| `MEMORA_PLANE` | `auto` | Force the model plane: `subscription-claude`, `subscription-codex`, `api`, or auto-detect. |
+| `MEMORA_LLM_MODEL` | cheap per plane | Extraction model — `haiku` (Claude) / `gpt-4.1-mini` (API). Set `sonnet`, `gpt-5`, etc. for sharper memories. |
+| `MEMORA_REASONING` | `low` | Reasoning/effort for extraction. `low` is plenty for this task. |
+| `MEMORA_CAPTURE` | `rich` | How much to store: `lean` · `balanced` · `rich` (store more, trust recall). |
+| `MEMORA_SESSION_SUMMARY` | `1` | Also store a short episodic summary of each session. |
+| `MEMORA_EMBEDDING` | `local` | `local` (in-process, no key) or `api` (a served endpoint you opt into). |
+| `MEMORA_EMBEDDING_MODEL` | `text-embedding-3-small` | Embedding model when `MEMORA_EMBEDDING=api`. |
+| `MEMORA_MAX_DISTILLS_PER_DAY` | `300` | Write-cap safety valve. |
+| `MEMORA_MIN_TURNS` | `3` | Skip capturing sessions shorter than this. |
+| `MEMORA_MCP_HOME` | `~/.memora-mcp` | Store + config location. |
+| `MEMORA_MCP_USER` | `$USER` | Selects the per-user collection. |
 
-### Zero-key local recipe (Ollama)
+**Why these defaults:** extraction is a read-and-structure task, so a cheap model at low reasoning is more than good enough — on a hard test transcript, `haiku` caught every fact a larger model did. And because Memora never embeds the raw value (only compact abstractions and cues), storing more doesn't blur retrieval — so capture is generous by default and recall does the ranking. See [docs/OVERVIEW.md](docs/OVERVIEW.md) for the full rationale.
+
+### Using an API or gateway instead of a subscription
 
 ```sh
-ollama pull gemma4:12b && ollama cp gemma4:12b gpt-4-local
-ollama pull nomic-embed-text
-
-export OPENAI_API_TYPE=openai OPENAI_API_KEY=ollama
-export OPENAI_BASE_URL=http://localhost:11434/v1
-export MEMORA_LLM_MODEL=gpt-4-local MEMORA_EMBEDDING_MODEL=nomic-embed-text
+# any OpenAI-compatible endpoint; extraction + (optional) embeddings run there
+export OPENAI_API_KEY=sk-...            # or a gateway key
+export OPENAI_BASE_URL=https://...      # OpenAI, Azure, LiteLLM, vLLM, Databricks AI Gateway
+export MEMORA_PLANE=api MEMORA_LLM_MODEL=gpt-4.1-mini
 ```
 
-The `ollama cp` alias exists because of the model-name routing noted above: the name has to look like a GPT model or Memora won't use the OpenAI client. A 12B-class model handles extraction fine; smaller models produce flakier cue generation (which degrades gracefully — see notes).
+Embeddings stay in-process unless you set `MEMORA_EMBEDDING=api`.
 
 ## Wiring
 
