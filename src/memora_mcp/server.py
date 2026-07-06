@@ -68,7 +68,7 @@ def memory_search(query: str, top_k: int = 5) -> str:
     """
     client = _get_client()
     with contextlib.redirect_stdout(sys.stderr):
-        entries = client.query(query, top_k=top_k)
+        entries = client.query(query, top_k=top_k, enable_hybrid_search=True)
         if not entries:
             # Memora's default BOTH mode drops all primary hits when the cue
             # leg returns nothing (core/memory.py fuses only when both legs
@@ -116,10 +116,6 @@ def memory_list(limit: int = 20) -> str:
 
 
 def main() -> None:
-    if len(sys.argv) > 1 and sys.argv[1] == "doctor":
-        from memora_mcp.doctor import run
-
-        raise SystemExit(run())
     mcp.run()
 
 

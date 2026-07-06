@@ -12,7 +12,7 @@ dependencies = [
 ]
 
 [project.scripts]
-memora-mcp = "memora_mcp.server:main"
+memora-mcp = "memora_mcp.entry:main"
 
 [build-system]
 requires = ["hatchling"]

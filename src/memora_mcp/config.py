@@ -16,19 +16,28 @@ def ensure_memora_importable() -> None:
     MEMORA_SRC, then the checkout install.sh manages under MEMORA_MCP_HOME.
     """
     candidates = [os.environ.get("MEMORA_SRC"), str(memora_home() / "Memora" / "src")]
+    imported = False
     for src in candidates:
         try:
             import memora  # noqa: F401
-            return
+            imported = True
+            break
         except ImportError:
             pass
         if src and Path(src).is_dir():
             sys.path.insert(0, str(Path(src).expanduser().resolve()))
-    try:
-        import memora  # noqa: F401
+    if not imported:
+        try:
+            import memora  # noqa: F401
+            imported = True
+        except ImportError:
+            pass
+    if imported:
+        # Install the in-process embedder shim before any client is built.
+        from memora_mcp.embedder import install_local_embedder
+
+        install_local_embedder()
         return
-    except ImportError:
-        pass
     raise RuntimeError(
         "memora is not importable. Run install.sh from "
         "https://github.com/trwilcoxson/memora-mcp, or clone "
@@ -47,12 +56,11 @@ def build_cfg():
     """
     from omegaconf import OmegaConf
 
+    # With the in-process embedder (default) and a subscription/CLI model
+    # plane, no OPENAI_API_KEY is needed at all. A dummy key keeps Memora's
+    # OpenAI client constructor happy on code paths we don't exercise.
     api_type = os.environ.get("OPENAI_API_TYPE", "openai")
-    if api_type == "openai" and not os.environ.get("OPENAI_API_KEY"):
-        raise RuntimeError(
-            "OPENAI_API_KEY is required (Memora's OpenAI client refuses to "
-            "start without one; for keyless local gateways set any value)"
-        )
+    api_key = os.environ.get("OPENAI_API_KEY") or "unused-local"
 
     store_path = memora_home() / "store"
     store_path.mkdir(parents=True, exist_ok=True)
@@ -74,16 +82,30 @@ def build_cfg():
                     os.environ.get("MEMORA_EMBEDDING_MODEL", "text-embedding-3-small"),
                 ),
                 "managed_identity": os.environ.get("AZURE_MANAGED_IDENTITY_CLIENT_ID"),
-                "api_key": os.environ.get("OPENAI_API_KEY"),
+                "api_key": api_key,
                 "embedding_model": os.environ.get("MEMORA_EMBEDDING_MODEL", "text-embedding-3-small"),
                 "model": os.environ.get("MEMORA_LLM_MODEL", "gpt-4.1-mini"),
             },
             "memory": {
                 "memory_store": "memora_mcp",
                 "persist_path": str(store_path),
-                "collection_name": os.environ.get("MEMORA_MCP_COLLECTION", "memora"),
+                # Collection is embedder-specific: vectors from different
+                # embedders share no space, so the name carries the embedder
+                # tag to prevent a dimension-mismatch on an existing store.
+                "collection_name": os.environ.get(
+                    "MEMORA_MCP_COLLECTION",
+                    "mem_local" if os.environ.get("MEMORA_EMBEDDING", "local") == "local" else "mem_api",
+                ),
                 "distance": "cosine",
-                "query_score_threshold": float(os.environ.get("MEMORA_QUERY_THRESHOLD", "0.4")),
+                # Local MiniLM is weaker on far paraphrases than a hosted
+                # embedder, so its recall floor is lower; hybrid BM25 fusion
+                # (below) recovers keyword overlap the vector leg misses.
+                "query_score_threshold": float(
+                    os.environ.get(
+                        "MEMORA_QUERY_THRESHOLD",
+                        "0.25" if os.environ.get("MEMORA_EMBEDDING", "local") == "local" else "0.4",
+                    )
+                ),
                 "update_score_threshold": float(os.environ.get("MEMORA_UPDATE_THRESHOLD", "0.8")),
                 "force_rebuild": False,
                 "enhance_query": False,
@@ -91,7 +113,7 @@ def build_cfg():
                 "multimodal_support": False,
                 "top_k": 10,
                 "cue_top_k": 10,
-                "enable_hybrid_search": os.environ.get("MEMORA_HYBRID", "0") == "1",
+                "enable_hybrid_search": os.environ.get("MEMORA_HYBRID", "1") == "1",
                 "enable_segmentation": False,
                 "enable_episodic_memory": os.environ.get("MEMORA_EPISODIC", "0") == "1",
                 "use_segments_as_episodic": False,
