@@ -71,64 +71,46 @@ fi
 SITE=$("$VENV/bin/python" -c 'import site; print(site.getsitepackages()[0])')
 printf '%s\n' "$HOME_DIR/Memora/src" > "$SITE/memora-src.pth"
 
-if [ "$BACKEND" = "auto" ]; then
-  if [ -n "${OPENAI_API_KEY:-}" ]; then BACKEND=openai; elif command -v ollama >/dev/null 2>&1; then BACKEND=ollama; else
-    die "no backend: set OPENAI_API_KEY (any OpenAI-compatible endpoint via OPENAI_BASE_URL), or install Ollama (https://ollama.com), then re-run"
-  fi
+# Model plane: memory rides whatever already instruments your agents. No new
+# backend, key, or daemon is provisioned. Embeddings are in-process (bundled
+# MiniLM) by default. The plane is detected again at runtime by the server;
+# this is just for the install-time report and any env the server needs.
+REG_ENV=""
+if command -v claude >/dev/null 2>&1; then
+  say "model plane: your Claude subscription (claude CLI) — no API key needed"
+elif command -v codex >/dev/null 2>&1; then
+  say "model plane: your Codex subscription (codex CLI) — no API key needed"
+elif [ -n "${OPENAI_API_KEY:-}" ]; then
+  say "model plane: OpenAI-compatible API key"
+  REG_ENV="-e OPENAI_API_KEY=$OPENAI_API_KEY ${OPENAI_BASE_URL:+-e OPENAI_BASE_URL=$OPENAI_BASE_URL}"
+  [ -n "${MEMORA_LLM_MODEL:-}" ] && REG_ENV="$REG_ENV -e MEMORA_LLM_MODEL=$MEMORA_LLM_MODEL"
+else
+  say "note: no model plane detected yet. Memory stores and recalls now, but"
+  say "distillation waits until a plane exists — log in to claude/codex or set"
+  say "OPENAI_API_KEY. (Log in later and it just starts working; nothing to redo.)"
 fi
+# Opt into a served embedding endpoint only if the user asked for one.
+[ -n "${MEMORA_EMBEDDING:-}" ] && REG_ENV="$REG_ENV -e MEMORA_EMBEDDING=$MEMORA_EMBEDDING -e MEMORA_EMBEDDING_MODEL=${MEMORA_EMBEDDING_MODEL:-text-embedding-3-small}"
 
-case "$BACKEND" in
-  ollama)
-    command -v ollama >/dev/null 2>&1 || die "ollama not found (https://ollama.com)"
-    if ! curl -fsS -m 3 http://localhost:11434/api/tags >/dev/null 2>&1; then
-      say "starting ollama"
-      if [ -d /Applications/Ollama.app ]; then open -a Ollama; else (ollama serve >/dev/null 2>&1 &); fi
-      sleep 4
-      curl -fsS -m 5 http://localhost:11434/api/tags >/dev/null 2>&1 || die "ollama is installed but not serving on :11434"
-    fi
-    CHAT_MODEL="${CHAT_MODEL:-gpt-4-local}"
-    EMBED_MODEL="${EMBED_MODEL:-nomic-embed-text}"
-    ollama list | awk '{print $1}' | grep -qx "$EMBED_MODEL:latest" || { say "pulling $EMBED_MODEL"; ollama pull "$EMBED_MODEL"; }
-    if ! ollama list | awk '{print $1}' | grep -qx "$CHAT_MODEL:latest"; then
-      # Memora only uses the OpenAI client for GPT-looking model names, so
-      # local models get served under a gpt-* alias.
-      say "pulling $FALLBACK_OLLAMA_MODEL and aliasing it to $CHAT_MODEL"
-      ollama pull "$FALLBACK_OLLAMA_MODEL"
-      ollama cp "$FALLBACK_OLLAMA_MODEL" "$CHAT_MODEL"
-    fi
-    ENV_API_TYPE=openai ENV_API_KEY=ollama ENV_BASE_URL=http://localhost:11434/v1
-    ;;
-  openai)
-    [ -n "${OPENAI_API_KEY:-}" ] || die "--backend openai needs OPENAI_API_KEY exported"
-    CHAT_MODEL="${CHAT_MODEL:-gpt-4.1-mini}"
-    EMBED_MODEL="${EMBED_MODEL:-text-embedding-3-small}"
-    ENV_API_TYPE=openai ENV_API_KEY="$OPENAI_API_KEY" ENV_BASE_URL="${OPENAI_BASE_URL:-}"
-    ;;
-  *) die "unknown backend: $BACKEND" ;;
-esac
-
-REG_CMD="claude mcp add --scope user memora \
-  -e OPENAI_API_TYPE=$ENV_API_TYPE -e OPENAI_API_KEY=$ENV_API_KEY \
-  ${ENV_BASE_URL:+-e OPENAI_BASE_URL=$ENV_BASE_URL} \
-  -e MEMORA_LLM_MODEL=$CHAT_MODEL -e MEMORA_EMBEDDING_MODEL=$EMBED_MODEL \
-  -- $VENV/bin/memora-mcp"
+REG_CMD="claude mcp add --scope user memora $REG_ENV -- $VENV/bin/memora-mcp"
 
 if [ "$REGISTER" -eq 1 ] && command -v claude >/dev/null 2>&1; then
-  say "registering user-scope MCP server for Claude Code (and Omnigent-managed sessions)"
+  say "registering the memory tools for Claude Code (and Omnigent-managed sessions)"
   claude mcp remove --scope user memora >/dev/null 2>&1 || true
   # shellcheck disable=SC2086
   eval "$REG_CMD" >/dev/null
+  say "turning on automatic memory (capture on stop/compact, recall at session start)"
+  "$VENV/bin/memora-mcp" enable >/dev/null || true
 elif [ "$REGISTER" -eq 1 ]; then
   say "claude CLI not found — register later with:"
   printf '%s\n' "  $REG_CMD"
+  printf '%s\n' "  $VENV/bin/memora-mcp enable   # turn on automatic memory"
 fi
 
 say "running doctor"
-env OPENAI_API_TYPE="$ENV_API_TYPE" OPENAI_API_KEY="$ENV_API_KEY" \
-  ${ENV_BASE_URL:+OPENAI_BASE_URL="$ENV_BASE_URL"} \
-  MEMORA_LLM_MODEL="$CHAT_MODEL" MEMORA_EMBEDDING_MODEL="$EMBED_MODEL" \
-  "$VENV/bin/memora-mcp" doctor
+"$VENV/bin/memora-mcp" doctor || true
 
-say "done. Try it: open a new claude (or omni claude) session and say"
-say '  "save to memory: <a fact>"  then, in a later session,  "search memory for <a paraphrase>"'
+say "done. Automatic memory is on. Just work in claude or omni claude —"
+say "facts you establish are captured on their own and recalled in later sessions."
+say "manage it with: memora-mcp list | why <id> | forget <id> | stats"
 say "unattended sessions: add \"mcp__memora__*\" to permissions.allow in ~/.claude/settings.json"

@@ -209,6 +209,62 @@ def _run():
     return summary
 
 
+_EXPLICIT_PROMPT = """The user explicitly asked to remember this. Turn it into one or more durable memories — do NOT discard it as noise. Split only if it clearly contains several distinct facts.
+
+For each memory give: an "index" ("<subject> — <aspect>"), the full "value", 2-4 short "cues" (alternate retrieval anchors), a "scope" ("user" for a cross-project preference/convention, else "project"), and a "taxonomy" (decision|env|failfix|preference|convention|fact).
+
+Return ONLY: {"ops": [{"action":"add","index":"...","value":"...","cues":["..."],"scope":"...","taxonomy":"..."}]}
+No prose outside the JSON.
+
+CONTENT TO REMEMBER:
+{content}
+"""
+
+
+def store_from_text(content, *, project_key, harness="", session_id="", explicit=True):
+    """Extract memories from a piece of text on the deployment's model plane
+    and store them through Memora's cue-preserving store. Shared by the
+    automemory distiller and the explicit memory_save tool, so BOTH ride the
+    subscription/gateway plane — neither needs an OpenAI key.
+
+    With no model plane available, falls back to storing the content verbatim
+    as one memory (no harmonic enrichment, but the save still succeeds).
+    Returns a list of stored primary index strings.
+    """
+    ensure_memora_importable()
+    from memora.core.memory_entry import MemoryEntry
+    from memora.memora_client import MemoraClient
+
+    client = MemoraClient(cfg=build_cfg(), user_id=user_id())
+    sc = Sidecar()
+    stored = []
+    try:
+        content, _ = redact(content)
+        plane = planes.detect()
+        ops = []
+        if plane["kind"] != "none":
+            try:
+                result = planes.complete_json(plane, _EXPLICIT_PROMPT.replace("{content}", content))
+                ops = result.get("ops", [])
+            except Exception:
+                ops = []
+        if not ops:
+            # No plane, or extraction failed: store the raw fact so an explicit
+            # save is never silently lost. No cues, but it is recallable.
+            idx = content.strip().split("\n", 1)[0][:80] or "note"
+            ops = [{"action": "add", "index": idx, "value": content.strip(),
+                    "scope": "project", "taxonomy": "fact"}]
+        for op in ops:
+            try:
+                _apply_op(client, sc, MemoryEntry, op, project_key, harness or "explicit", session_id)
+                stored.append(op.get("index", ""))
+            except Exception:
+                pass
+    finally:
+        sc.close()
+    return stored
+
+
 def _apply_op(client, sc, MemoryEntry, op, project_key, harness, session_id):
     action = op.get("action")
     scope = op.get("scope", "project")

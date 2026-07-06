@@ -44,9 +44,18 @@ def _extract_json(text):
 def complete_json(plane, prompt, timeout=600):
     """One model turn on the deployment's plane; returns the parsed JSON object."""
     kind = plane["kind"]
+    # Force the harness into pure-function mode: no tools, no preamble, JSON
+    # only. Without this the CLI treats the prompt as a task to help with.
+    sys_prompt = (
+        "You are a JSON extraction function, not an assistant. Read the user "
+        "content and output ONLY the single JSON object it asks for — no prose, "
+        "no explanation, no markdown fences, no tool use. If nothing applies, "
+        'output {"ops": []}.'
+    )
     if kind == "subscription-claude":
         r = subprocess.run(
             ["claude", "-p", prompt, "--output-format", "json",
+             "--append-system-prompt", sys_prompt,
              "--disallowedTools", "*", "--max-turns", "1"],
             capture_output=True, text=True, timeout=timeout,
         )
