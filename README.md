@@ -99,6 +99,22 @@ tools:
 
 Run it with `omni run examples/omnigent-bundle`. Put the backend settings in the `env` block — the MCP subprocess is spawned by the Omnigent server, not your shell, so exported variables may not reach it. Each sub-agent in a bundle has its own tool surface; declare the server in every agent that should have memory.
 
+**Under Omnigent (native Claude harness)**
+
+Omnigent launches native Claude Code sessions with its own `--mcp-config` for the bridge server, without `--strict-mcp-config` — so user-scope MCP servers load too. Register once and every `omni claude` session has memory:
+
+```sh
+claude mcp add --scope user memora \
+  -e OPENAI_API_TYPE=openai -e OPENAI_API_KEY=ollama \
+  -e OPENAI_BASE_URL=http://localhost:11434/v1 \
+  -e MEMORA_LLM_MODEL=gpt-4-local -e MEMORA_EMBEDDING_MODEL=nomic-embed-text \
+  -- /path/to/venv/bin/memora-mcp
+```
+
+Add `mcp__memora__*` to `permissions.allow` in `~/.claude/settings.json` if you don't run with permissions bypassed — Omnigent routes native permission prompts to its web UI, which stalls unattended sessions.
+
+Two useful properties fall out of Omnigent's architecture: its transcript forwarder persists every `memory_save`/`memory_search` call and result into the Omnigent conversation store (auditable at `/v1/sessions/{id}/items`), and its policy hooks evaluate memory tool calls like any other tool, so CEL policies can gate them.
+
 **Verify the loop**
 
 ```sh
